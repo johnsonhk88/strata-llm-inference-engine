@@ -1,0 +1,40 @@
+# Strata on NVIDIA (RTX 20–50 / matching RTX PRO). Needs NVIDIA Container Toolkit.
+#
+#   cp .env.example .env && ./scripts/launch-docker.sh
+#   docker compose logs -f
+#
+# Only one runner (native or Docker) should own the GPU at a time.
+# restart is off so a reboot does not steal the card from another engine.
+
+services:
+  strata:
+    image: ${STRATA_IMAGE:-ghcr.io/niko1221/strata:0.2.8-cuda13}
+    container_name: strata
+    restart: "no"
+    ports:
+      - "${STRATA_BIND:-127.0.0.1}:${STRATA_PORT:-8080}:8080"
+    environment:
+      FAMILY: ${FAMILY:-qwen}
+      MODEL: ${MODEL:-IQ3_S}
+      MODEL_PATH: ${MODEL_PATH:-}
+      CONTEXT: ${CONTEXT:-32k}
+      PARALLEL: ${PARALLEL:-}
+      VISION: ${VISION:-gpu}
+      TUNE: ${TUNE:-skip}
+      API_KEY: ${API_KEY:-}
+      PORT: "8080"
+    volumes:
+      - ./data:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    shm_size: 2gb
+    stop_grace_period: 2m

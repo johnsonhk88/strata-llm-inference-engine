@@ -1,0 +1,7 @@
+.env
+data/*
+!data/README.md
+*.gguf
+install.sh
+*.log
+.superpowers/
