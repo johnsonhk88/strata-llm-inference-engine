@@ -1,7 +1,12 @@
-# Strata on NVIDIA (RTX 20–50 / matching RTX PRO). Needs NVIDIA Container Toolkit.
+# Strata on NVIDIA. Needs the NVIDIA Container Toolkit.
 #
-#   cp .env.example .env && ./scripts/launch-docker.sh
+#   This host (RTX / Blackwell):  cp .env.example .env
+#   2x Tesla V100:                cp .env.v100.example .env
+#   ./scripts/launch-docker.sh
 #   docker compose logs -f
+#
+# cuda13 = RTX 20/30/40/50 and matching RTX PRO (driver 580+).
+# cuda12 = Tesla V100 / P100 / GTX 10 (driver 575.51+). Do not mix them.
 #
 # Only one runner (native or Docker) should own the GPU at a time.
 # restart is off so a reboot does not steal the card from another engine.
@@ -23,6 +28,9 @@ services:
       TUNE: ${TUNE:-skip}
       API_KEY: ${API_KEY:-}
       PORT: "8080"
+      GPU: ${GPU:-}
+      GPUS: ${GPU:-}
+      GPU_ROLES: ${GPU_ROLES:-}
     volumes:
       - ./data:/data
     deploy:

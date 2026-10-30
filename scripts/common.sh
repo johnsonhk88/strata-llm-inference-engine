@@ -22,6 +22,19 @@ VISION="${VISION:-gpu}"
 STRATA_BIND="${STRATA_BIND:-127.0.0.1}"
 STRATA_PORT="${STRATA_PORT:-8080}"
 STRATA_IMAGE="${STRATA_IMAGE:-ghcr.io/niko1221/strata:0.2.8-cuda13}"
+GPU="${GPU:-}"
+GPU_ROLES="${GPU_ROLES:-}"
+TUNE="${TUNE:-skip}"
+
+# Extra native flags (set by fill_native_gpu_args).
+NATIVE_GPU_ARGS=()
+
+fill_native_gpu_args() {
+  NATIVE_GPU_ARGS=()
+  if [[ -n "${GPU}" ]]; then
+    NATIVE_GPU_ARGS+=(--gpu "${GPU}")
+  fi
+}
 
 strata_bin() {
   if command -v strata >/dev/null 2>&1; then
@@ -38,7 +51,7 @@ strata_bin() {
 
 require_env_file() {
   if [[ ! -f "${ROOT}/.env" ]]; then
-    echo "Missing .env. Copy .env.example to .env and set API_KEY." >&2
+    echo "Missing .env. Copy .env.example (this host) or .env.v100.example (2x V100) to .env and set API_KEY." >&2
     exit 1
   fi
 }

@@ -7,6 +7,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 require_env_file
 bin="$(strata_bin)"
 mkdir -p "${DATA_DIR}"
+fill_native_gpu_args
 warn_if_gpu_busy
 
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx strata; then
@@ -20,8 +21,8 @@ if [[ -z "${API_KEY:-}" || "${API_KEY}" == change-me-please-use-a-long-random-ke
 fi
 
 echo "Launching native Strata: ${FAMILY}/${MODEL} on $(base_url)"
-echo "Data dir: ${DATA_DIR}"
-echo "First start can take a long time (model download + prepare)."
+echo "Data dir: ${DATA_DIR}  GPUs: ${GPU:-auto}  vision: ${VISION}"
+echo "First start can take a long time (engine + model download + prepare)."
 
 exec "${bin}" launch \
   --family "${FAMILY}" \
@@ -34,4 +35,5 @@ exec "${bin}" launch \
   --api-key "${API_KEY}" \
   --save-preset local \
   --yes \
-  --no-tui
+  --no-tui \
+  "${NATIVE_GPU_ARGS[@]}"

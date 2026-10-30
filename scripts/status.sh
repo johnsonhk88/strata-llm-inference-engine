@@ -4,6 +4,9 @@ set -euo pipefail
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
+echo "== Config =="
+echo "image=${STRATA_IMAGE}  family=${FAMILY}  model=${MODEL}  vision=${VISION}  gpu=${GPU:-auto}  api=$(base_url)"
+echo
 echo "== GPU =="
 nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu --format=csv
 echo
