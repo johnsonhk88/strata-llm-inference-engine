@@ -135,6 +135,34 @@ docker compose logs -f
 
 If a coding app runs **on the host**, point it at `http://127.0.0.1:8080` with the key from `.env`. `docker exec strata strata connect …` prints addresses **inside** the container.
 
+Run scripts with bash (`./scripts/launch-docker.sh`). `sh ./scripts/…` fails on `pipefail`. `Ctrl+C` on `docker compose logs -f` does not stop the container.
+
+## Check Docker Strata
+
+`docker compose up` succeeding is not the API being ready. First start downloads the model (~90 GB for IQ3_S), prepares the pack, then loads it. Until then, health is `starting` and port 8080 refuses connections.
+
+```bash
+./scripts/status.sh
+docker compose ps
+docker compose logs --tail 50
+ls -lh data/Strata-data/models/IQ3_S/
+docker stats --no-stream strata
+curl -fsS http://127.0.0.1:8080/health
+set -a && source .env && set +a
+curl -fsS -H "Authorization: Bearer ${API_KEY}" http://127.0.0.1:8080/v1/models
+```
+
+| Signal | Meaning |
+| --- | --- |
+| `health: starting` | Download/prepare/load still running. API down. |
+| `healthy` | `/v1/models` answered. Serving. |
+| Growing `*.gguf.part` / rising NET I/O | Download in progress (logs often show no percent). |
+| Complete `.gguf` files, no `.part` | Fetch done; prepare or load comes next. |
+| Connection reset / refused on `:8080` | Not serving yet, or the process died. |
+| `VLLM::EngineCore` in `nvidia-smi` | Another engine owns VRAM; load will likely OOM. |
+
+After it is healthy: `docker exec -it strata strata monitor`.
+
 ## 8. Verify
 
 ```bash
