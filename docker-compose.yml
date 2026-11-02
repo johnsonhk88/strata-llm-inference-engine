@@ -1,7 +1,7 @@
 # Strata on NVIDIA. Needs the NVIDIA Container Toolkit.
 #
-#   This host (RTX / Blackwell):  cp .env.example .env
-#   2x Tesla V100:                cp .env.v100.example .env
+#   This host (2x Tesla V100):    cp .env.v100.example .env
+#   Other host (RTX / Blackwell): cp .env.example .env
 #   ./scripts/launch-docker.sh
 #   docker compose logs -f
 #
@@ -13,23 +13,23 @@
 
 services:
   strata:
-    image: ${STRATA_IMAGE:-ghcr.io/niko1221/strata:0.2.8-cuda13}
+    image: ${STRATA_IMAGE:-ghcr.io/niko1221/strata:0.2.8-cuda12}
     container_name: strata
     restart: "no"
     ports:
       - "${STRATA_BIND:-127.0.0.1}:${STRATA_PORT:-8080}:8080"
     environment:
       FAMILY: ${FAMILY:-qwen}
-      MODEL: ${MODEL:-IQ3_S}
+      MODEL: ${MODEL:-IQ2_XS}
       MODEL_PATH: ${MODEL_PATH:-}
       CONTEXT: ${CONTEXT:-32k}
       PARALLEL: ${PARALLEL:-}
-      VISION: ${VISION:-gpu}
+      VISION: ${VISION:-cpu}
       TUNE: ${TUNE:-skip}
       API_KEY: ${API_KEY:-}
       PORT: "8080"
-      GPU: ${GPU:-}
-      GPUS: ${GPU:-}
+      GPU: ${GPU:-0,1}
+      GPUS: ${GPU:-0,1}
       GPU_ROLES: ${GPU_ROLES:-}
     volumes:
       - ./data:/data

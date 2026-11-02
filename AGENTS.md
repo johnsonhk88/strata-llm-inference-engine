@@ -5,7 +5,7 @@ Ops wrapper around official Strata (Niko1221/Strata). Do not clone or build the 
 ## Tech stack
 
 - Official Strata Terminal (`strata launch`) installed to `~/.local/bin`
-- Official Docker images `ghcr.io/niko1221/strata:<ver>-cuda13` (RTX / Blackwell) and `…-cuda12` (V100 / Pascal)
+- Official Docker images `ghcr.io/niko1221/strata:<ver>-cuda12` (V100 / Pascal) and `…-cuda13` (RTX / Blackwell)
 - Docker Compose, NVIDIA Container Toolkit
 
 ## Commands
@@ -16,21 +16,22 @@ Ops wrapper around official Strata (Niko1221/Strata). Do not clone or build the 
 - Docker serve: `./scripts/launch-docker.sh`
 - Status: `./scripts/status.sh`
 - Stop: `./scripts/stop.sh`
+- API smoke test: `python3 scripts/test_api.py`
 
 ## Boundaries
 
 - Never commit `.env`, GGUF files, or `data/` contents
 - Never start a model download without the user wanting a launch (plan is fine)
 - Never run native and Docker Strata together
-- Check GPU compute processes before launch; this host often has vLLM using VRAM
+- Check GPU compute processes before launch
 - Keep the API on `127.0.0.1` unless the user asks to bind the LAN, and then require a real API key
 - Do not install GPU drivers or build tools as a side effect of a normal Terminal install
-- Do not copy this host’s `.env` onto a V100 machine (wrong CUDA image)
+- Do not copy a Blackwell `.env` onto this V100 machine (wrong CUDA image)
 
 ## Defaults
 
-- This host: family `qwen`, model `IQ3_S`, context `32k`, vision `gpu`, image `cuda13`, `GPU` empty
-- 2× V100: `.env.v100.example` — image `cuda12`, `GPU=0,1`, vision `cpu`, model `IQ2_XS`
+- This host (2× V100-SXM2-16GB): `.env.v100.example` — family `qwen`, model `IQ2_XS`, context `32k`, vision `cpu`, image `cuda12`, `GPU=0,1`
+- Other host (Blackwell): `.env.example` — image `cuda13`, `GPU` empty, vision `gpu`, model `IQ3_S`
 - Data dir: repo `./data`
 
 ## Docs

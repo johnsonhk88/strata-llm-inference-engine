@@ -16,13 +16,13 @@ fi
 
 DATA_DIR="${ROOT}/data"
 FAMILY="${FAMILY:-qwen}"
-MODEL="${MODEL:-IQ3_S}"
+MODEL="${MODEL:-IQ2_XS}"
 CONTEXT="${CONTEXT:-32k}"
-VISION="${VISION:-gpu}"
+VISION="${VISION:-cpu}"
 STRATA_BIND="${STRATA_BIND:-127.0.0.1}"
 STRATA_PORT="${STRATA_PORT:-8080}"
-STRATA_IMAGE="${STRATA_IMAGE:-ghcr.io/niko1221/strata:0.2.8-cuda13}"
-GPU="${GPU:-}"
+STRATA_IMAGE="${STRATA_IMAGE:-ghcr.io/niko1221/strata:0.2.8-cuda12}"
+GPU="${GPU:-0,1}"
 GPU_ROLES="${GPU_ROLES:-}"
 TUNE="${TUNE:-skip}"
 
@@ -51,7 +51,7 @@ strata_bin() {
 
 require_env_file() {
   if [[ ! -f "${ROOT}/.env" ]]; then
-    echo "Missing .env. Copy .env.example (this host) or .env.v100.example (2x V100) to .env and set API_KEY." >&2
+    echo "Missing .env. Copy .env.v100.example (this 2x V100 host) or .env.example (Blackwell) to .env and set API_KEY." >&2
     exit 1
   fi
 }
