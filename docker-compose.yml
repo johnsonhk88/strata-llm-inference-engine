@@ -1,12 +1,13 @@
 # Strata on NVIDIA. Needs the NVIDIA Container Toolkit.
 #
-#   This host (2x Tesla V100):    cp .env.v100.example .env
-#   Other host (RTX / Blackwell): cp .env.example .env
+#   This host (2x Tesla V100):    cp .env.v100.example .env   # GPU=0,1
+#   Other host (RTX / Blackwell): cp .env.example .env       # GPU=0
 #   ./scripts/launch-docker.sh
 #   docker compose logs -f
 #
 # cuda13 = RTX 20/30/40/50 and matching RTX PRO (driver 580+).
 # cuda12 = Tesla V100 / P100 / GTX 10 (driver 575.51+). Do not mix them.
+# GPU defaults to 0,1 when unset — that is wrong on a one-card Blackwell box.
 #
 # Only one runner (native or Docker) should own the GPU at a time.
 # restart is off so a reboot does not steal the card from another engine.

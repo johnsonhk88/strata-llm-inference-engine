@@ -4,12 +4,14 @@ Local launch wrappers for [Niko1221/Strata](https://github.com/Niko1221/Strata):
 
 This repo does not vendor the engine. It installs the official CLI and pulls the official NVIDIA image.
 
-| Machine | Profile | Image |
-| --- | --- | --- |
-| **This host** — 2× Tesla V100-SXM2-16GB, Volta sm_70, driver 580, ~62 GB RAM | `.env.v100.example` | `…:0.2.8-cuda12` — see [docs/V100.md](docs/V100.md) |
-| **Other host** — RTX PRO 4500 Blackwell 32 GB, CUDA 13, ~94 GB RAM | `.env.example` | `…:0.2.8-cuda13` |
+| Machine | Profile | Image | `GPU` |
+| --- | --- | --- | --- |
+| **This host** — 2× Tesla V100-SXM2-16GB, Volta sm_70, driver 580, ~62 GB RAM | `.env.v100.example` | `…:0.2.8-cuda12` — see [docs/V100.md](docs/V100.md) | `0,1` (required) |
+| **Other host** — RTX PRO 4500 Blackwell 32 GB, CUDA 13, ~94 GB RAM | `.env.example` | `…:0.2.8-cuda13` | `0` (required) |
 
-Do not copy a Blackwell `.env` onto this box. CUDA 13 cannot run Volta.
+Do not copy a Blackwell `.env` onto this box. CUDA 13 cannot run Volta. Do not copy a V100 `.env` onto the Blackwell box (`GPU=0,1` exits 6 on one card).
+
+If `GPU=` is missing, Compose and `scripts/common.sh` default to `0,1`. On the Blackwell box that is `strata: GPU 1 cannot be used` / container **Exited (6)**. Keep `GPU=0` from `.env.example`. Confirm with `docker compose config` (`GPU: "0"`).
 
 **Guides:** [docs/USAGE.md](docs/USAGE.md) (full steps, API, troubleshooting) · [docs/V100.md](docs/V100.md) (dual V100)
 
@@ -36,12 +38,27 @@ Do not copy a Blackwell `.env` onto this box. CUDA 13 cannot run Volta.
 
    Default here is ISTA-DASLab Qwen3.8-Flash-Next **IQ2_XS**, 32K, CPU vision, `GPU=0,1` (~74 GB first download: model + MTP draft layer + picture reader). The plan must name CUDA 12 / both V100s.
 
+**Blackwell / RTX host** instead:
+
+```bash
+cp .env.example .env
+sed -i "s/^API_KEY=.*/API_KEY=$(openssl rand -hex 24)/" .env
+# keep GPU=0
+docker compose pull          # pulls cuda13 because of STRATA_IMAGE
+./scripts/plan.sh
+```
+
+IQ3_S first fetch is about **85 GB**. `GPU=` must stay `0`.
+
 ## 2. Free the GPU
 
-Only **one** engine may own the cards. Stop vLLM or any other CUDA job before Strata.
+Only **one** engine may own the cards. Stop native/Docker Strata, vLLM, or a Helm `vllm` deploy before launch. `kill` on the engine process is not enough if Kubernetes will recreate the pod.
 
 ```bash
 ./scripts/status.sh    # lists GPU compute processes
+nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv
+# If Helm vLLM owns the card (this Blackwell box):
+# kubectl scale deployment vllm -n default --replicas=0
 ```
 
 ## 3. Launch (pick one)
@@ -81,7 +98,7 @@ docker compose ps
 | --- | --- |
 | `Up … (health: starting)` | Container is alive. Model download/prepare/load is still in progress. API is down. |
 | `Up … (healthy)` | Engine answered `/v1/models`. This is the “it works” signal. |
-| `Exited` / `unhealthy` | Failed. Read `docker compose logs --tail 80`. |
+| `Exited` / `unhealthy` | Failed. Read `docker compose logs --tail 80` and `data/state/strata/launch/docker.setup.log`. Exit **6** with `GPU 1 cannot be used` means `.env` sent `0,1` to a one-card machine — set `GPU=0`. |
 
 **2. API (only works when healthy)**
 
@@ -98,7 +115,7 @@ Compose logs often stay on “Getting your model ready” with no percent. Check
 
 ```bash
 docker compose logs --tail 50
-ls -lh data/Strata-data/models/IQ2_XS/
+ls -lh data/Strata-data/models/IQ2_XS/    # or IQ3_S/ on Blackwell
 docker stats --no-stream strata    # NET I/O climbing = download
 ```
 
@@ -143,7 +160,7 @@ Details and curl examples: [docs/USAGE.md](docs/USAGE.md#api).
 | --- | --- |
 | `.env` | Model, port, API key, image, GPUs (gitignored) |
 | `.env.v100.example` | This host: 2× V100 / CUDA 12 |
-| `.env.example` | Other host: Blackwell / CUDA 13 |
+| `.env.example` | Other host: Blackwell / CUDA 13 / `GPU=0` |
 | `docker-compose.yml` | Official image, bind-mount `./data`, localhost:8080 |
 | `data/` | Shared model and runtime files |
 | `scripts/` | install, plan, launch, stop, status, API smoke test |

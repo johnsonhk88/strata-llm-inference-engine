@@ -1,6 +1,6 @@
 # Step-by-step usage
 
-How to install, plan, launch, call, and stop Strata with this repo. **This host is 2× Tesla V100** — read [V100.md](V100.md) and use `.env.v100.example`. A Blackwell / RTX box uses `.env.example` instead.
+How to install, plan, launch, call, and stop Strata with this repo. **This host is 2× Tesla V100** — read [V100.md](V100.md) and use `.env.v100.example`. A Blackwell / RTX box uses `.env.example` and **must keep `GPU=0`**.
 
 Official engine docs: [Niko1221/Strata](https://github.com/Niko1221/Strata) (`docs/INSTALL.md`, `docs/AI_SETUP.md`, `docs/DOCKER.md`).
 
@@ -11,7 +11,7 @@ Official engine docs: [Niko1221/Strata](https://github.com/Niko1221/Strata) (`do
   - Tesla V100 / P100 / GTX 10: driver **575.51+**, CUDA 12 image ([V100.md](V100.md)) — **this host**
   - RTX 20 / 30 / 40 / 50 and matching RTX PRO: driver **580+**, CUDA 13 image
 - Docker Engine + NVIDIA Container Toolkit (for the Docker path)
-- Disk: first IQ2_XS launch here is about **74 GB** under `./data` (model ~68 GB + MTP draft layer ~5 GB + picture reader ~1 GB). Keep that on a large SSD.
+- Disk: first IQ2_XS launch here is about **74 GB** under `./data` (model ~68 GB + MTP draft layer ~5 GB + picture reader ~1 GB). Blackwell IQ3_S is about **85 GB** of model files. Keep that on a large SSD.
 - RAM: IQ2_XS wants on the order of 36 GB for experts plus ~10 GB for the OS. This host has ~62 GB. Do not start with IQ3_S on 16 GB cards.
 
 Check the cards:
@@ -37,17 +37,19 @@ sed -i "s/^API_KEY=.*/API_KEY=$(openssl rand -hex 24)/" .env
 
 If `.env` already exists, keep that key.
 
-**Blackwell / RTX host:** `cp .env.example .env` then set `API_KEY`. Never copy that `.env` onto this V100 box.
+**Blackwell / RTX host:** `cp .env.example .env` then set `API_KEY`. Keep `GPU=0`. Never copy that `.env` onto this V100 box, and never copy a V100 `.env` (`GPU=0,1`, `cuda12`) onto the Blackwell box.
 
 | Variable | Meaning |
 | --- | --- |
 | `STRATA_IMAGE` | Docker tag. `…-cuda12` (V100) or `…-cuda13` (RTX) |
 | `FAMILY` / `MODEL` | Catalog id, e.g. `qwen` / `IQ2_XS` |
 | `CONTEXT` | e.g. `32k` |
-| `VISION` | `gpu`, `cpu`, or `off`. This host: `cpu` |
-| `GPU` | Empty = auto. `0,1` = layer-split both cards (**required** on V100) |
+| `VISION` | `gpu`, `cpu`, or `off`. V100: `cpu`. Blackwell 32 GB: `gpu` |
+| `GPU` | **Must be set.** Unset/empty becomes `0,1` in Compose and `scripts/common.sh`. V100: `0,1`. One card (Blackwell / RTX): `0`. Confirm with `docker compose config` |
 | `STRATA_BIND` / `STRATA_PORT` | Default `127.0.0.1` / `8080` |
 | `API_KEY` | 16+ characters. Required by the launch scripts |
+
+Blackwell first IQ3_S fetch is about **85 GB** of model files (Strata reports ~84.5 GB), plus helpers. V100 IQ2_XS is about **74 GB** including draft + picture reader.
 
 ## 3. Install the native Terminal
 
@@ -73,7 +75,7 @@ docker compose pull
 docker compose config --quiet
 ```
 
-The image is ~2 GB. The model is **not** inside the image. Compose defaults to `…-cuda12` on this host; `.env` from `.env.v100.example` sets the same tag. A Blackwell box must set `STRATA_IMAGE` to `…-cuda13` before `docker compose pull`.
+The image is ~2 GB. The model is **not** inside the image. Compose defaults to `…-cuda12` on this host; `.env` from `.env.v100.example` sets the same tag. A Blackwell box must set `STRATA_IMAGE` to `…-cuda13` and `GPU=0` before `docker compose pull`. Check interpolation with `docker compose config | grep -E 'GPU|image:'`.
 
 GPU smoke test (optional):
 
@@ -97,6 +99,15 @@ nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv
 ```
 
 Stop vLLM or any other CUDA process that holds VRAM. Only one of native Strata, Docker Strata, or vLLM should run.
+
+On the Blackwell box, vLLM is often a Helm deploy in `default`. Scaling is the clean stop (a kill will be recreated):
+
+```bash
+kubectl get deploy vllm -n default
+kubectl scale deployment vllm -n default --replicas=0
+# bring it back later, after Strata is stopped:
+# kubectl scale deployment vllm -n default --replicas=1
+```
 
 ## 7a. Launch Docker
 
@@ -151,7 +162,7 @@ strata connect opencode --check
 ./scripts/status.sh
 docker compose ps
 docker compose logs --tail 50
-ls -lh data/Strata-data/models/IQ2_XS/
+ls -lh data/Strata-data/models/IQ2_XS/    # or IQ3_S/ on Blackwell
 docker stats --no-stream strata
 curl -fsS http://127.0.0.1:8080/health
 python3 scripts/test_api.py
@@ -165,6 +176,7 @@ python3 scripts/test_api.py
 | Complete `.gguf` files, no `.part` | Fetch done; prepare or load comes next. |
 | Connection reset / refused on `:8080` | Not serving yet, or the process died. |
 | Other CUDA process in `nvidia-smi` | Another engine owns VRAM; load will likely OOM. |
+| `Exited (6)` / `GPU 1 cannot be used` | One-card host got `GPU=0,1`. Set `GPU=0`; see Troubleshooting. |
 
 Logs may say **Downloading the draft layer (~5 GB)**. That is MTP (multi-token prediction): a small extra network that drafts upcoming tokens so the main model can verify several at once. Replies are often about twice as fast. It is not a second full model. Skip it only if you are short on memory (native: `--mtp off`; this wrapper does not expose that in `.env`).
 
@@ -238,6 +250,7 @@ Native and Docker can share GGUF files under `./data`, but prepared packs may st
 
 - Never commit `.env`, GGUFs, or `data/` payloads
 - Never run native and Docker Strata together
+- Always set `GPU` in `.env` (unset becomes `0,1`; one-card Blackwell needs `0`)
 - Do not start a download unless you meant to launch (`plan.sh` is safe)
 - Do not install GPU drivers or compilers as a side effect of `install-native.sh`
 
@@ -246,9 +259,11 @@ Native and Docker can share GGUF files under `./data`, but prepared packs may st
 | Symptom | What to do |
 | --- | --- |
 | GPU OOM / engine dies at start | `./scripts/status.sh`; stop other CUDA jobs; keep `MODEL=IQ2_XS` on 16 GB cards |
+| `GPU 1 cannot be used: not found` / container **Exited (6)** | One-card box (Blackwell) with missing `GPU=` — wrapper sent `0,1`. Set `GPU=0` in `.env`. `docker compose config` must show `GPU: "0"`. Details: `data/state/strata/launch/docker.setup.log`. Logs may still say `Main: GPU 1 RTX PRO 4500 Blackwell` (Strata’s card label). That is OK once it passes `Checking your computer` |
+| Helm/K8s vLLM holds VRAM | `kubectl scale deployment vllm -n default --replicas=0`. Do not `kill` the engine; the ReplicaSet restarts it. Scale Strata down before setting replicas back to 1 |
 | `strata: command not found` | `export PATH="$HOME/.local/bin:$PATH"` |
 | Docker: could not select NVIDIA driver | install NVIDIA Container Toolkit, `sudo nvidia-ctk runtime configure --runtime=docker`, restart Docker |
-| Plan / start says engine does not match the card | V100 → `cuda12` and `GPU=0,1`; RTX → `cuda13` |
+| Plan / start says engine does not match the card | V100 → `cuda12` and `GPU=0,1`; RTX / Blackwell → `cuda13` and `GPU=0` |
 | Port in use | change `STRATA_PORT` or stop the other server |
 | Download stalled | `docker compose logs -f` or native logs; restart launch — it resumes |
 | `docker stop` exit 137 | already using `stop_grace_period: 2m`; wait; do not `kill -9` mid-unload |
