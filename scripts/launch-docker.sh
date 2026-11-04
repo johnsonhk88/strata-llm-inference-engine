@@ -5,6 +5,8 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 require_env_file
+refuse_deepseek_on_volta
+refuse_coder_on_old_docker
 mkdir -p "${DATA_DIR}"
 warn_if_gpu_busy
 

@@ -1,6 +1,6 @@
 # Step-by-step usage
 
-How to install, plan, launch, call, and stop Strata with this repo. **This host is 2× Tesla V100** — read [V100.md](V100.md) and use `.env.v100.example`. A Blackwell / RTX box uses `.env.example` and **must keep `GPU=0`**.
+How to install, plan, launch, call, and stop Strata with this repo. **This host is 2× Tesla V100** — read [V100.md](V100.md) and use `.env.v100.example`. A Blackwell / RTX box uses `.env.example` and **must keep `GPU=0`**. Native Terminal is 0.2.10; Docker images are pinned **0.2.9** until GHCR publishes 0.2.10.
 
 Official engine docs: [Niko1221/Strata](https://github.com/Niko1221/Strata) (`docs/INSTALL.md`, `docs/AI_SETUP.md`, `docs/DOCKER.md`).
 
@@ -11,7 +11,7 @@ Official engine docs: [Niko1221/Strata](https://github.com/Niko1221/Strata) (`do
   - Tesla V100 / P100 / GTX 10: driver **575.51+**, CUDA 12 image ([V100.md](V100.md)) — **this host**
   - RTX 20 / 30 / 40 / 50 and matching RTX PRO: driver **580+**, CUDA 13 image
 - Docker Engine + NVIDIA Container Toolkit (for the Docker path)
-- Disk: first IQ2_XS launch here is about **74 GB** under `./data` (model ~68 GB + MTP draft layer ~5 GB + picture reader ~1 GB). Blackwell IQ3_S is about **85 GB** of model files. Keep that on a large SSD.
+- Disk: first IQ2_XS launch here is about **74 GB** under `./data` (model ~68 GB + MTP draft layer ~5 GB + picture reader ~1 GB). Blackwell IQ3_S is about **85 GB** of model files. DeepSeek ISTA-DAS Coder is about **191 GB** (Blackwell native only). Keep that on a large SSD.
 - RAM: IQ2_XS wants on the order of 36 GB for experts plus ~10 GB for the OS. This host has ~62 GB. Do not start with IQ3_S on 16 GB cards.
 
 Check the cards:
@@ -41,11 +41,13 @@ If `.env` already exists, keep that key.
 
 | Variable | Meaning |
 | --- | --- |
-| `STRATA_IMAGE` | Docker tag. `…-cuda12` (V100) or `…-cuda13` (RTX) |
-| `FAMILY` / `MODEL` | Catalog id, e.g. `qwen` / `IQ2_XS` |
-| `CONTEXT` | e.g. `32k` |
+| `STRATA_IMAGE` | Docker tag. `0.2.9-cuda12` (V100) or `0.2.9-cuda13` (RTX). Native CLI is 0.2.10 |
+| `FAMILY` / `MODEL` | Catalog id, e.g. `qwen` / `IQ2_XS`, or `deepseek41` / `ISTA-DAS-Coder` |
+| `CONTEXT` | e.g. `32k` (Qwen) or `8k` (DeepSeek default) |
 | `VISION` | `gpu`, `cpu`, or `off`. V100: `cpu`. Blackwell 32 GB: `gpu` |
 | `GPU` | **Must be set.** Unset/empty becomes `0,1` in Compose and `scripts/common.sh`. V100: `0,1`. One card (Blackwell / RTX): `0`. Confirm with `docker compose config` |
+| `SPEED` | DeepSeek only: `faster` or `full`. Empty = engine Auto |
+| `DRAFTING` | Qwen: `auto` / `mtp` / `dflash2` / `off`. Empty = Auto. DeepSeek uses DSpark, not DFlash2 |
 | `STRATA_BIND` / `STRATA_PORT` | Default `127.0.0.1` / `8080` |
 | `API_KEY` | 16+ characters. Required by the launch scripts |
 
@@ -58,7 +60,7 @@ Blackwell first IQ3_S fetch is about **85 GB** of model files (Strata reports ~8
 strata --version
 ```
 
-This downloads the signed Terminal into `~/.local` (no source checkout, no compiler). The GPU engine package is fetched on first `strata launch`, not during this step. On Volta, that engine is **CUDA 12**.
+This downloads the signed Terminal into `~/.local` (no source checkout, no compiler). The GPU engine package is fetched on first `strata launch`, not during this step. On Volta, that engine is **CUDA 12**. If you already had 0.2.9, run `strata update`. Coming from 0.2.9 with DeepSeek, run it a **second** time for `engine-dsv41`.
 
 If `strata` is missing in a new terminal:
 
@@ -178,7 +180,7 @@ python3 scripts/test_api.py
 | Other CUDA process in `nvidia-smi` | Another engine owns VRAM; load will likely OOM. |
 | `Exited (6)` / `GPU 1 cannot be used` | One-card host got `GPU=0,1`. Set `GPU=0`; see Troubleshooting. |
 
-Logs may say **Downloading the draft layer (~5 GB)**. That is MTP (multi-token prediction): a small extra network that drafts upcoming tokens so the main model can verify several at once. Replies are often about twice as fast. It is not a second full model. Skip it only if you are short on memory (native: `--mtp off`; this wrapper does not expose that in `.env`).
+Logs may say **Downloading the draft layer (~5 GB)**. That is MTP (multi-token prediction): a small extra network that drafts upcoming tokens so the main model can verify several at once. Replies are often about twice as fast. It is not a second full model. Skip it only if you are short on memory (native: `--mtp off` or `DRAFTING=off`). On native 0.2.10, Qwen Auto picks **DFlash2** (~0.7 GB) on sm_86+ cards (Blackwell); V100 stays on MTP. DeepSeek uses **DSpark**, not DFlash2.
 
 After it is healthy: `docker exec -it strata strata monitor`.
 
@@ -237,6 +239,93 @@ python3 scripts/test_api.py --stream --prompt "Say hi in one sentence."
 
 Keep `STRATA_BIND=127.0.0.1` unless you intentionally serve the LAN. Binding `0.0.0.0` requires a real API key.
 
+## Speed and metrics
+
+Wait until `./scripts/status.sh` shows **healthy** and `/health` has `"loaded": true`. Two speeds:
+
+| Name | What it is | Trust this field |
+| --- | --- | --- |
+| **Prompt tok/s** | How fast the model **reads** your input | `timing.prompt_per_second` on a **long fresh** prompt (thousands of tokens). A 50–70 token chat looks slow because of per-request overhead |
+| **Decode tok/s** | How fast it **writes** the answer. This is “tokens per second” | `timing.predicted_per_second` on a generation of ~100+ tokens. MTP/DFlash2 drafts raise this when they are accepted |
+
+Do not divide `completion_tokens` by wall-clock of a non-stream request unless you say so: that mix includes queue + prompt read.
+
+### Live monitor
+
+```bash
+docker exec -it strata strata monitor          # q leaves; server keeps running
+docker exec strata strata monitor --once       # one snapshot for scripts
+# native:
+strata monitor
+```
+
+While a request is in flight you see answer speed, prompt reading, GPU, VRAM, context fill. Idle: speed shows `--`.
+
+### `GET /metrics`
+
+Needs the API key. JSON is the Monitor’s source. Prometheus text (`Accept: text/plain`) uses vLLM names plus `strata:`.
+
+```bash
+set -a && source .env && set +a
+curl -fsS -H "Authorization: Bearer ${API_KEY}" http://127.0.0.1:8080/metrics
+curl -fsS -H "Authorization: Bearer ${API_KEY}" -H "Accept: text/plain" \
+  http://127.0.0.1:8080/metrics
+```
+
+| JSON | Meaning |
+| --- | --- |
+| `live.tok_s` | Decode rate of the request in flight (`null` when idle) |
+| `live.prefill_tok_s_mean` | Prompt-read rate while prefill is running |
+| `totals.prompt_tokens` / `totals.prompt_ms` | Lifetime prompt tok/s = `1000 * prompt_tokens / prompt_ms` |
+| `totals.output_tokens` / `totals.decode_ms` | Lifetime decode tok/s = `1000 * output_tokens / decode_ms` |
+| `totals.drafts_offered` / `totals.drafts_accepted` | MTP (or other drafter) accept rate |
+| `hardware.gpu_util`, VRAM in `hardware` | Cards |
+
+Prometheus: `strata:live_tok_s`, `vllm:time_to_first_token_seconds`, `vllm:inter_token_latency_seconds`, `vllm:spec_decode_num_draft_tokens_total` / `_accepted_tokens_total`.
+
+### One chat (engine `timing`)
+
+```bash
+set -a && source .env && set +a
+curl -sS http://127.0.0.1:8080/v1/chat/completions \
+  -H "Authorization: Bearer ${API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"qwen3.8-flash-next-iq2_xs","temperature":0,"max_tokens":128,"messages":[{"role":"user","content":"Write a detailed technical paragraph about Tesla V100 GPUs. Do not stop early."}]}'
+```
+
+Read `timing`:
+
+| Field | Meaning |
+| --- | --- |
+| `prompt_n` / `prompt_ms` / `prompt_per_second` | Prefill |
+| `predicted_n` / `predicted_ms` / `predicted_per_second` | Decode |
+| `draft_n` / `draft_n_accepted` | Drafter |
+
+`python3 scripts/test_api.py --max-tokens 128` prints **wall-clock only**, not tok/s. For time-to-first-token, stream (`--stream`) and clock from the first `delta` to the last.
+
+### Official bench (comparable suite)
+
+Against the **already running** server (does not start a second engine). Native `strata` on `PATH` (`export PATH="$HOME/.local/bin:$PATH"`):
+
+```bash
+set -a && source .env && set +a
+export STRATA_BENCH_KEY="$API_KEY"
+strata bench run --url http://127.0.0.1:8080 --credential-env STRATA_BENCH_KEY --skip-model-hash
+```
+
+Reports decode tok/s, prompt tok/s at 4K/16K, and time to first token. Several minutes after load. `--skip-model-hash` skips hashing tens of GB of GGUFs (the run is then marked nonconforming). Help: `strata bench run --help`.
+
+### This host (2× V100 IQ2_XS, Docker 0.2.9, one run)
+
+Not a guarantee. First request after load is slower; ignore it.
+
+| Workload | Prompt tok/s | Decode tok/s |
+| --- | ---: | ---: |
+| 128 new tokens, short prompt | overhead (~70 on 70 tokens) | **~98** (`predicted_per_second`); stream from first token **~103**; TTFT ~0.28 s |
+| ~8K fresh prompt, 8 new tokens | **~775** | too few decode tokens to use |
+
+RTX 5070 IQ2_XS in upstream docs is ~80 decode / ~2k prompt at 32K — Volta is the experimental CUDA 12 path.
+
 ## Switch model or context
 
 1. `./scripts/stop.sh`
@@ -245,6 +334,31 @@ Keep `STRATA_BIND=127.0.0.1` unless you intentionally serve the LAN. Binding `0.
 4. Launch again
 
 Native and Docker can share GGUF files under `./data`, but prepared packs may still be created per runner. Prefer **one** runner to do the first download.
+
+## DeepSeek V4.1-Flash (ISTA-DAS Coder)
+
+Official engine: [DEEPSEEK41.md](https://github.com/Niko1221/Strata/blob/main/docs/DEEPSEEK41.md). This wrapper’s Coder profile is **native 0.2.10 on the Blackwell box**. Docker 0.2.9 has no Coder catalog entry. This V100 host has **no** official DeepSeek engine (CUDA 13 / sm_86+ only).
+
+| Set | Download | Notes |
+| --- | ---: | --- |
+| **ISTA-DAS Coder** (this profile) | ~191 GB | 72 GB weights + 111 GB Engram + 8 GB DSpark. Coding/agent prune (192 of 384 experts) |
+| 1.75 / 2.00 / 2.25 bpw | 239 / 257 / 274 GB | Full expert count; not the default here |
+
+**Blackwell (the real path):**
+
+```bash
+# keep the existing API_KEY
+cp .env.blackwell.deepseek.example .env
+# restore API_KEY if the copy overwrote it
+kubectl scale deployment vllm -n default --replicas=0
+./scripts/plan.sh
+# only if the plan names CUDA 13, ISTA-DAS-Coder, and ~191 GB:
+./scripts/launch-native.sh
+```
+
+Scale vLLM back to 1 only after `./scripts/stop.sh`. Context default is **8k**. Empty `SPEED` lets the engine choose (Full quality on 32 GB). DeepSeek reads pictures with its own tower (`VISION=gpu` on that box).
+
+**This V100 host:** copy `.env.v100.deepseek.example` only to run `./scripts/plan.sh`. Launch scripts refuse unless `STRATA_FORCE_UNSUPPORTED=1`. That can still download ~191 GB and then fail to serve. Do not clone or build `strata-dsv41` unless you explicitly want a source install.
 
 ## Rules
 
@@ -264,6 +378,8 @@ Native and Docker can share GGUF files under `./data`, but prepared packs may st
 | `strata: command not found` | `export PATH="$HOME/.local/bin:$PATH"` |
 | Docker: could not select NVIDIA driver | install NVIDIA Container Toolkit, `sudo nvidia-ctk runtime configure --runtime=docker`, restart Docker |
 | Plan / start says engine does not match the card | V100 → `cuda12` and `GPU=0,1`; RTX / Blackwell → `cuda13` and `GPU=0` |
+| `Refusing DeepSeek on this CUDA 12 / Volta host` | Expected on this box. Use the Blackwell native Coder profile. Plan is allowed |
+| `ISTA-DAS-Coder needs Strata 0.2.10` | Docker is still 0.2.9. Use `./scripts/launch-native.sh` on Blackwell after native 0.2.10 |
 | Port in use | change `STRATA_PORT` or stop the other server |
 | Download stalled | `docker compose logs -f` or native logs; restart launch — it resumes |
 | `docker stop` exit 137 | already using `stop_grace_period: 2m`; wait; do not `kill -9` mid-unload |

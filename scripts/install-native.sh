@@ -23,5 +23,10 @@ fi
 
 strata --version
 echo
+echo "This installer fetches the latest Terminal (0.2.10 as of the DeepSeek Coder release)."
+echo "If you already had 0.2.9: run 'strata update'. Coming from 0.2.9 with DeepSeek, run it a second time for engine-dsv41."
+echo "Docker images in this wrapper stay on 0.2.9 until GHCR publishes 0.2.10-cuda12 / 0.2.10-cuda13."
+echo "ISTA-DAS-Coder is native 0.2.10 only. DFlash2 is the Qwen drafter (Blackwell native); V100 Qwen stays on MTP."
+echo
 echo "Next: ./scripts/plan.sh     (no download)"
 echo "      ./scripts/launch-native.sh   (downloads the model on first run)"

@@ -5,9 +5,10 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/common.sh"
 
 require_env_file
+refuse_deepseek_on_volta
 bin="$(strata_bin)"
 mkdir -p "${DATA_DIR}"
-fill_native_gpu_args
+fill_native_launch_args
 warn_if_gpu_busy
 
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx strata; then
@@ -36,4 +37,4 @@ exec "${bin}" launch \
   --save-preset local \
   --yes \
   --no-tui \
-  "${NATIVE_GPU_ARGS[@]}"
+  "${NATIVE_LAUNCH_ARGS[@]}"

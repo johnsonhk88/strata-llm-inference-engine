@@ -6,14 +6,16 @@ This repo does not vendor the engine. It installs the official CLI and pulls the
 
 | Machine | Profile | Image | `GPU` |
 | --- | --- | --- | --- |
-| **This host** — 2× Tesla V100-SXM2-16GB, Volta sm_70, driver 580, ~62 GB RAM | `.env.v100.example` | `…:0.2.8-cuda12` — see [docs/V100.md](docs/V100.md) | `0,1` (required) |
-| **Other host** — RTX PRO 4500 Blackwell 32 GB, CUDA 13, ~94 GB RAM | `.env.example` | `…:0.2.8-cuda13` | `0` (required) |
+| **This host** — 2× Tesla V100-SXM2-16GB, Volta sm_70, driver 580, ~62 GB RAM | `.env.v100.example` | `…:0.2.9-cuda12` — see [docs/V100.md](docs/V100.md) | `0,1` (required) |
+| **Other host** — RTX PRO 4500 Blackwell 32 GB, CUDA 13, ~94 GB RAM | `.env.example` | `…:0.2.9-cuda13` | `0` (required) |
 
 Do not copy a Blackwell `.env` onto this box. CUDA 13 cannot run Volta. Do not copy a V100 `.env` onto the Blackwell box (`GPU=0,1` exits 6 on one card).
 
 If `GPU=` is missing, Compose and `scripts/common.sh` default to `0,1`. On the Blackwell box that is `strata: GPU 1 cannot be used` / container **Exited (6)**. Keep `GPU=0` from `.env.example`. Confirm with `docker compose config` (`GPU: "0"`).
 
-**Guides:** [docs/USAGE.md](docs/USAGE.md) (full steps, API, troubleshooting) · [docs/V100.md](docs/V100.md) (dual V100)
+Native Terminal tracks the latest release (**0.2.10**: DFlash2 for Qwen, ISTA-DAS Coder). Docker pins **0.2.9** until GHCR publishes `0.2.10-cuda12` / `0.2.10-cuda13`. DeepSeek Coder is native 0.2.10 on Blackwell only — see [docs/USAGE.md](docs/USAGE.md#deepseek-v41-flash-ista-das-coder). V100 has no official DeepSeek engine.
+
+**Guides:** [docs/USAGE.md](docs/USAGE.md) (full steps, API, troubleshooting) · [docs/USAGE.md#speed-and-metrics](docs/USAGE.md#speed-and-metrics) (tok/s, `/metrics`) · [docs/V100.md](docs/V100.md) (dual V100)
 
 ---
 
@@ -129,19 +131,24 @@ nvidia-smi
 
 If another job still holds most of the VRAM, Strata can download but will likely OOM when it tries to load. Stop the other engine first.
 
-**5. Live monitor (after it is healthy)**
+**5. Live monitor and tok/s (after it is healthy)**
 
 ```bash
-docker exec -it strata strata monitor
+docker exec -it strata strata monitor          # live decode/prompt tok/s; q leaves
+docker exec strata strata monitor --once
+set -a && source .env && set +a
+curl -fsS -H "Authorization: Bearer ${API_KEY}" http://127.0.0.1:8080/metrics
+python3 scripts/test_api.py --max-tokens 128 --prompt "Write a short paragraph about GPUs."
 ```
 
-More detail: [docs/USAGE.md](docs/USAGE.md#check-docker-strata).
+Chat responses include a `timing` object: `prompt_per_second` (read the input) and `predicted_per_second` (write the answer). That second number is “tokens per second.” Full steps: [docs/USAGE.md#speed-and-metrics](docs/USAGE.md#speed-and-metrics).
 
 ## 5. Use the API
 
 - OpenAI-compatible: `http://127.0.0.1:8080/v1` with `Authorization: Bearer <API_KEY>`
 - Anthropic-compatible: `http://127.0.0.1:8080` (client adds `/v1/messages`)
 - `GET /health` needs no key
+- `GET /metrics` needs the key — live tok/s, totals, GPU
 - Smoke test: `python3 scripts/test_api.py`
 
 Details and curl examples: [docs/USAGE.md](docs/USAGE.md#api).
@@ -159,8 +166,10 @@ Details and curl examples: [docs/USAGE.md](docs/USAGE.md#api).
 | Path | Role |
 | --- | --- |
 | `.env` | Model, port, API key, image, GPUs (gitignored) |
-| `.env.v100.example` | This host: 2× V100 / CUDA 12 |
-| `.env.example` | Other host: Blackwell / CUDA 13 / `GPU=0` |
+| `.env.v100.example` | This host: 2× V100 / CUDA 12 / Qwen IQ2_XS |
+| `.env.example` | Other host: Blackwell / CUDA 13 / `GPU=0` / Qwen IQ3_S |
+| `.env.blackwell.deepseek.example` | Blackwell native 0.2.10: DeepSeek ISTA-DAS Coder (~191 GB) |
+| `.env.v100.deepseek.example` | V100 DeepSeek profile — plan-only; launch is refused |
 | `docker-compose.yml` | Official image, bind-mount `./data`, localhost:8080 |
 | `data/` | Shared model and runtime files |
 | `scripts/` | install, plan, launch, stop, status, API smoke test |

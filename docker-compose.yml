@@ -1,7 +1,9 @@
 # Strata on NVIDIA. Needs the NVIDIA Container Toolkit.
 #
-#   This host (2x Tesla V100):    cp .env.v100.example .env   # GPU=0,1
-#   Other host (RTX / Blackwell): cp .env.example .env       # GPU=0
+#   This host (2x Tesla V100):    cp .env.v100.example .env   # GPU=0,1  Qwen
+#   Other host (RTX / Blackwell): cp .env.example .env       # GPU=0     Qwen
+#   DeepSeek Coder: native 0.2.10 on Blackwell (.env.blackwell.deepseek.example).
+#   Docker 0.2.9 has no ISTA-DAS-Coder catalog entry. V100 has no DeepSeek engine.
 #   ./scripts/launch-docker.sh
 #   docker compose logs -f
 #
@@ -14,7 +16,7 @@
 
 services:
   strata:
-    image: ${STRATA_IMAGE:-ghcr.io/niko1221/strata:0.2.8-cuda12}
+    image: ${STRATA_IMAGE:-ghcr.io/niko1221/strata:0.2.9-cuda12}
     container_name: strata
     restart: "no"
     ports:
